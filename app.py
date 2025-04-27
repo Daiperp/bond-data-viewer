@@ -170,6 +170,10 @@ def main():
                 elif "銘柄名" in df.columns:
                     df = df.rename(columns={"銘柄名": "Issues"})
                     bond_name_column = "Issues"
+                elif len(df.columns) >= 4 and isinstance(df.columns[3], str) and any(c for c in df.columns[3] if ord(c) > 127):
+                    df = df.rename(columns={df.columns[3]: "Issues"})
+                    bond_name_column = "Issues"
+                    st.info(f"Using Japanese column '{df.columns[3]}' for bond names")
                 elif "Code" in df.columns:
                     bond_name_column = "Code"
                     st.info("Using 'Code' column for bond names")
