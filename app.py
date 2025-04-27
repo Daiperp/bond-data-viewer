@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import requests
+import time
 from datetime import datetime
 import io
 
@@ -65,37 +66,52 @@ def construct_url(selected_date):
     return file_name, url
 
 
-def download_csv(url):
+def download_csv(url, max_retries=3):
     """
-    Download the CSV file from the given URL.
+    Download the CSV file from the given URL with retry mechanism.
 
     Args:
         url (str): The URL to download the CSV from
+        max_retries (int): Maximum number of retry attempts
 
     Returns:
         pandas.DataFrame or None: The downloaded data as a DataFrame,
-        or None if download failed
+        or None if download failed after all retries
     """
-    try:
-        response = requests.get(url, timeout=10)
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            st.info(f"Downloading data (attempt {retry_count + 1}/{max_retries})...")
+            response = requests.get(url, timeout=30)  # Increased timeout to 30 seconds
 
-        if response.status_code == 200:
-            try:
-                content = response.content.decode('shift-jis')
-                df = pd.read_csv(io.StringIO(content))
-                return df
-            except Exception as e:
-                st.error(f"Error parsing CSV data: {str(e)}")
+            if response.status_code == 200:
+                try:
+                    content = response.content.decode('shift-jis')
+                    df = pd.read_csv(io.StringIO(content))
+                    return df
+                except Exception as e:
+                    st.warning(f"Error parsing CSV data: {str(e)}")
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        st.error("Failed to parse CSV data after multiple attempts. The data format may be invalid.")
+                        return None
+            else:
+                st.error(
+                    f"No data available for the selected date. "
+                    f"Status code: {response.status_code}"
+                )
                 return None
-        else:
-            st.error(
-                f"No data available for the selected date. "
-                f"Status code: {response.status_code}"
-            )
-            return None
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error downloading data: {str(e)}")
-        return None
+        except requests.exceptions.RequestException as e:
+            retry_count += 1
+            if retry_count >= max_retries:
+                st.error(
+                    f"Failed to download data after {max_retries} attempts. "
+                    f"Please check your internet connection and try again later."
+                )
+                return None
+            else:
+                st.warning(f"Download attempt {retry_count} failed: {str(e)}. Retrying...")
+                time.sleep(1)
 
 
 def translate_columns(df):
@@ -135,8 +151,14 @@ def main():
             df = download_csv(url)
 
             if df is not None:
+                st.write("Original columns:", df.columns.tolist())
+                
                 # Translate column headers
                 df = translate_columns(df)
+
+                st.write("Translated columns:", df.columns.tolist())
+                
+                st.write("Column mapping used:", COLUMN_MAPPING)
 
                 st.session_state.bond_data = df
 
@@ -145,17 +167,26 @@ def main():
 
                 if "Issues" in df.columns:
                     bond_name_column = "Issues"
+                elif "銘柄名" in df.columns:
+                    df = df.rename(columns={"銘柄名": "Issues"})
+                    bond_name_column = "Issues"
+                elif len(df.columns) >= 4 and isinstance(df.columns[3], str) and any(c for c in df.columns[3] if ord(c) > 127):
+                    df = df.rename(columns={df.columns[3]: "Issues"})
+                    bond_name_column = "Issues"
+                    st.info(f"Using Japanese column '{df.columns[3]}' for bond names")
+                elif "Code" in df.columns:
+                    bond_name_column = "Code"
+                    st.info("Using 'Code' column for bond names")
+                elif len(df.columns) >= 3:
+                    bond_name_column = df.columns[2]
+                    st.info(
+                        f"Using column '{bond_name_column}' for bond names"
+                    )
                 else:
-                    if len(df.columns) >= 3:
-                        bond_name_column = df.columns[2]
-                        st.info(
-                            f"Using column '{bond_name_column}' for bond names"
-                        )
-                    else:
-                        st.warning(
-                            "Could not identify a column for bond names"
-                        )
-                        return
+                    st.warning(
+                        "Could not identify a column for bond names"
+                    )
+                    return
 
                 bond_names = df[bond_name_column].unique().tolist()
 
