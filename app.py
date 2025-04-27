@@ -145,17 +145,22 @@ def main():
 
                 if "Issues" in df.columns:
                     bond_name_column = "Issues"
+                elif "銘柄名" in df.columns:
+                    df = df.rename(columns={"銘柄名": "Issues"})
+                    bond_name_column = "Issues"
+                elif "Code" in df.columns:
+                    bond_name_column = "Code"
+                    st.info("Using 'Code' column for bond names")
+                elif len(df.columns) >= 3:
+                    bond_name_column = df.columns[2]
+                    st.info(
+                        f"Using column '{bond_name_column}' for bond names"
+                    )
                 else:
-                    if len(df.columns) >= 3:
-                        bond_name_column = df.columns[2]
-                        st.info(
-                            f"Using column '{bond_name_column}' for bond names"
-                        )
-                    else:
-                        st.warning(
-                            "Could not identify a column for bond names"
-                        )
-                        return
+                    st.warning(
+                        "Could not identify a column for bond names"
+                    )
+                    return
 
                 bond_names = df[bond_name_column].unique().tolist()
 
