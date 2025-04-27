@@ -4,7 +4,6 @@ import plotly.express as px
 import requests
 from datetime import datetime
 import io
-import os
 
 st.set_page_config(
     page_title="Corporate Bond Data Viewer",
@@ -43,13 +42,14 @@ COLUMN_MAPPING = {
     "中央値単価前日比": "Median Price Change (Yen)"
 }
 
+
 def construct_url(selected_date):
     """
     Construct the CSV file name and URL based on the selected date.
-    
+
     Args:
         selected_date (datetime): The selected date
-        
+
     Returns:
         tuple: (file_name, url)
     """
@@ -57,46 +57,54 @@ def construct_url(selected_date):
     year_short = str(year_full)[-2:]
     month = selected_date.strftime("%m")
     day = selected_date.strftime("%d")
-    
+
     file_name = f"S{year_short}{month}{day}.csv"
-    url = f"https://market.jsda.or.jp/shijyo/saiken/baibai/baisanchi/files/{year_full}/{file_name}"
-    
+    url = (f"https://market.jsda.or.jp/shijyo/saiken/baibai/baisanchi/files/"
+           f"{year_full}/{file_name}")
+
     return file_name, url
+
 
 def download_csv(url):
     """
     Download the CSV file from the given URL.
-    
+
     Args:
         url (str): The URL to download the CSV from
-        
+
     Returns:
-        pandas.DataFrame or None: The downloaded data as a DataFrame, or None if download failed
+        pandas.DataFrame or None: The downloaded data as a DataFrame,
+        or None if download failed
     """
     try:
         response = requests.get(url, timeout=10)
-        
+
         if response.status_code == 200:
             try:
-                df = pd.read_csv(io.StringIO(response.content.decode('shift-jis')))
+                content = response.content.decode('shift-jis')
+                df = pd.read_csv(io.StringIO(content))
                 return df
             except Exception as e:
                 st.error(f"Error parsing CSV data: {str(e)}")
                 return None
         else:
-            st.error(f"No data available for the selected date. Status code: {response.status_code}")
+            st.error(
+                f"No data available for the selected date. "
+                f"Status code: {response.status_code}"
+            )
             return None
     except requests.exceptions.RequestException as e:
         st.error(f"Error downloading data: {str(e)}")
         return None
 
+
 def translate_columns(df):
     """
     Translate column headers from Japanese to English based on the mapping.
-    
+
     Args:
         df (pandas.DataFrame): The DataFrame with Japanese column headers
-        
+
     Returns:
         pandas.DataFrame: The DataFrame with English column headers
     """
@@ -104,9 +112,10 @@ def translate_columns(df):
     for jp_col, en_col in COLUMN_MAPPING.items():
         if jp_col in df.columns:
             existing_columns[jp_col] = en_col
-    
+
     df = df.rename(columns=existing_columns)
     return df
+
 
 def main():
     today = datetime.now()
@@ -116,53 +125,64 @@ def main():
         min_value=datetime(2000, 1, 1),
         max_value=today
     )
-    
+
     if st.button("Fetch Data"):
         with st.spinner("Fetching data..."):
             # Construct the URL
             file_name, url = construct_url(selected_date)
-            
+
             # Download the CSV
             df = download_csv(url)
-            
+
             if df is not None:
                 # Translate column headers
                 df = translate_columns(df)
-                
+
                 st.session_state.bond_data = df
-                
+
                 st.subheader("Bond Data")
                 st.dataframe(df)
-                
+
                 if "Issues" in df.columns:
                     bond_name_column = "Issues"
                 else:
                     if len(df.columns) >= 3:
                         bond_name_column = df.columns[2]
-                        st.info(f"Using column '{bond_name_column}' for bond names")
+                        st.info(
+                            f"Using column '{bond_name_column}' for bond names"
+                        )
                     else:
-                        st.warning("Could not identify a column for bond names")
+                        st.warning(
+                            "Could not identify a column for bond names"
+                        )
                         return
-                
+
                 bond_names = df[bond_name_column].unique().tolist()
-                
+
                 if bond_names:
-                    selected_bond = st.selectbox("Select a bond to visualize", bond_names)
-                    
+                    selected_bond = st.selectbox(
+                        "Select a bond to visualize",
+                        bond_names
+                    )
+
                     bond_data = df[df[bond_name_column] == selected_bond]
-                    
+
                     if "Average Compound Yield" in bond_data.columns:
                         yield_column = "Average Compound Yield"
                     else:
                         if len(df.columns) >= 6:
                             yield_column = df.columns[6]
-                            st.info(f"Using column '{yield_column}' for yield data")
+                            st.info(
+                                f"Using column '{yield_column}' for yield data"
+                            )
                         else:
-                            st.warning("Could not identify a column for yield data")
+                            st.warning(
+                                "Could not identify a column for yield data"
+                            )
                             return
-                    
+
                     st.subheader(f"Yield data for {selected_bond}")
-                    
+
                     fig = px.line(
                         bond_data,
                         x=bond_data.index,
@@ -170,17 +190,18 @@ def main():
                         title=f"Yield data for {selected_bond}",
                         labels={yield_column: "Yield (%)"}
                     )
-                    
+
                     fig.update_layout(
                         xaxis_title="Index",
                         yaxis_title="Yield (%)",
                         plot_bgcolor="white",
                         hovermode="x unified"
                     )
-                    
+
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning("No bond names found in the data.")
+
 
 if __name__ == "__main__":
     main()
