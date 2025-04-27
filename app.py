@@ -165,27 +165,13 @@ def main():
                 st.subheader("Bond Data")
                 st.dataframe(df)
 
-                if "Issues" in df.columns:
+                if len(df.columns) > 3:
+                    original_column_name = df.columns[3]
+                    df = df.rename(columns={original_column_name: "Issues"})
                     bond_name_column = "Issues"
-                elif "銘柄名" in df.columns:
-                    df = df.rename(columns={"銘柄名": "Issues"})
-                    bond_name_column = "Issues"
-                elif len(df.columns) >= 4 and isinstance(df.columns[3], str) and any(c for c in df.columns[3] if ord(c) > 127):
-                    df = df.rename(columns={df.columns[3]: "Issues"})
-                    bond_name_column = "Issues"
-                    st.info(f"Using Japanese column '{df.columns[3]}' for bond names")
-                elif "Code" in df.columns:
-                    bond_name_column = "Code"
-                    st.info("Using 'Code' column for bond names")
-                elif len(df.columns) >= 3:
-                    bond_name_column = df.columns[2]
-                    st.info(
-                        f"Using column '{bond_name_column}' for bond names"
-                    )
+                    st.info(f"Using column at index 3 ('{original_column_name}') for bond names")
                 else:
-                    st.warning(
-                        "Could not identify a column for bond names"
-                    )
+                    st.warning("Could not identify a column for bond names")
                     return
 
                 bond_names = df[bond_name_column].unique().tolist()
