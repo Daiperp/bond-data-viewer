@@ -16,33 +16,6 @@ st.set_page_config(
 st.title("Corporate Bond Data Viewer")
 st.markdown("Visualize corporate bond data from the JSDA website.")
 
-COLUMN_MAPPING = {
-    "日付": "Date",
-    "銘柄種別": "Issue Type",
-    "銘柄コード": "Code",
-    "銘柄名": "Issues",
-    "償還期日": "Due Date",
-    "利率": "Coupon Rate",
-    "平均値複利": "Average Compound Yield",
-    "平均値単価": "Average Price(Yen)",
-    "平均値単価前日比": "Change (Yen)",
-    "利払日": "Interest Payment Date",
-    "銘柄属性・情報": "Information",
-    "平均値単利": "Average Simple Yield",
-    "最高値": "High",
-    "最低値": "Low",
-    "チェックフラグ": "Invalid",
-    "報告社数": "Number of Reporting Members",
-    "最高値複利": "Highest Compound Yield",
-    "最高値単価前日比": "Highest Price Change (Yen)",
-    "最低値複利": "Lowest Compound Yield",
-    "最低値単価前日比": "Lowest Price Change (Yen)",
-    "中央値複利": "Median Compound Yield",
-    "中央値単利": "Median Simple Yield",
-    "中央値単価": "Median Price(Yen)",
-    "中央値単価前日比": "Median Price Change (Yen)"
-}
-
 
 def construct_url(selected_date):
     """
@@ -87,7 +60,7 @@ def download_csv(url, max_retries=3):
             if response.status_code == 200:
                 try:
                     content = response.content.decode('shift-jis')
-                    df = pd.read_csv(io.StringIO(content))
+                    df = pd.read_csv(io.StringIO(content), header=None, sep="\t")
                     return df
                 except Exception as e:
                     st.warning(f"Error parsing CSV data: {str(e)}")
@@ -114,23 +87,24 @@ def download_csv(url, max_retries=3):
                 time.sleep(1)
 
 
-def translate_columns(df):
+def calculate_years_to_maturity(due_date_str, selected_date):
     """
-    Translate column headers from Japanese to English based on the mapping.
-
+    Calculate years to maturity based on due date and selected date.
+    
     Args:
-        df (pandas.DataFrame): The DataFrame with Japanese column headers
-
+        due_date_str (str): Due date in YYYYMMDD format
+        selected_date (datetime): Selected date
+    
     Returns:
-        pandas.DataFrame: The DataFrame with English column headers
+        float: Years to maturity
     """
-    existing_columns = {}
-    for jp_col, en_col in COLUMN_MAPPING.items():
-        if jp_col in df.columns:
-            existing_columns[jp_col] = en_col
-
-    df = df.rename(columns=existing_columns)
-    return df
+    try:
+        due_date = datetime.strptime(str(due_date_str), "%Y%m%d")
+        days_to_maturity = (due_date - selected_date).days
+        years_to_maturity = days_to_maturity / 365.25  # Account for leap years
+        return round(years_to_maturity, 2)
+    except Exception:
+        return None
 
 
 def main():
@@ -151,29 +125,50 @@ def main():
             df = download_csv(url)
 
             if df is not None:
-                st.write("Original columns:", df.columns.tolist())
+                if df.shape[1] < 4:
+                    st.error("Data format invalid or download failed")
+                    return
                 
-                # Translate column headers
-                df = translate_columns(df)
-
-                st.write("Translated columns:", df.columns.tolist())
+                column_names = [
+                    "Date",           # Column 0
+                    "Issue Type",     # Column 1
+                    "Code",           # Column 2
+                    "Issues",         # Column 3 (bond name)
+                    "Due Date",       # Column 4
+                    "Coupon Rate",    # Column 5
+                    "Average Compound Yield",  # Column 6
+                    "Average Price(Yen)",      # Column 7
+                    "Change (Yen)",            # Column 8
+                    "Interest Payment Date",   # Column 9
+                    "Information",             # Column 10
+                    "Average Simple Yield",    # Column 11
+                    "High",                    # Column 12
+                    "Low",                     # Column 13
+                    "Invalid",                 # Column 14
+                    "Number of Reporting Members",  # Column 15
+                    "Highest Compound Yield",       # Column 16
+                    "Highest Price Change (Yen)",   # Column 17
+                    "Lowest Compound Yield",        # Column 18
+                    "Lowest Price Change (Yen)",    # Column 19
+                    "Median Compound Yield",        # Column 20
+                    "Median Simple Yield",          # Column 21
+                    "Median Price(Yen)",            # Column 22
+                    "Median Price Change (Yen)"     # Column 23
+                ]
                 
-                st.write("Column mapping used:", COLUMN_MAPPING)
-
+                df.columns = column_names[:df.shape[1]]
+                
+                if df.shape[1] > 4:  # Due Date is column 4 (index 4)
+                    df["Years to Maturity"] = df["Due Date"].apply(
+                        lambda x: calculate_years_to_maturity(x, selected_date)
+                    )
+                
                 st.session_state.bond_data = df
 
                 st.subheader("Bond Data")
                 st.dataframe(df)
 
-                if len(df.columns) > 3:
-                    original_column_name = df.columns[3]
-                    df = df.rename(columns={original_column_name: "Issues"})
-                    bond_name_column = "Issues"
-                    st.info(f"Using column at index 3 ('{original_column_name}') for bond names")
-                else:
-                    st.warning("Could not identify a column for bond names")
-                    return
-
+                bond_name_column = "Issues"
                 bond_names = df[bond_name_column].unique().tolist()
 
                 if bond_names:
@@ -184,38 +179,29 @@ def main():
 
                     bond_data = df[df[bond_name_column] == selected_bond]
 
-                    if "Average Compound Yield" in bond_data.columns:
-                        yield_column = "Average Compound Yield"
+                    yield_column = "Average Compound Yield"
+                    
+                    if yield_column in bond_data.columns:
+                        st.subheader(f"Yield data for {selected_bond}")
+
+                        fig = px.line(
+                            bond_data,
+                            x=bond_data.index,
+                            y=yield_column,
+                            title=f"Yield data for {selected_bond}",
+                            labels={yield_column: "Yield (%)"}
+                        )
+
+                        fig.update_layout(
+                            xaxis_title="Index",
+                            yaxis_title="Yield (%)",
+                            plot_bgcolor="white",
+                            hovermode="x unified"
+                        )
+
+                        st.plotly_chart(fig, use_container_width=True)
                     else:
-                        if len(df.columns) >= 6:
-                            yield_column = df.columns[6]
-                            st.info(
-                                f"Using column '{yield_column}' for yield data"
-                            )
-                        else:
-                            st.warning(
-                                "Could not identify a column for yield data"
-                            )
-                            return
-
-                    st.subheader(f"Yield data for {selected_bond}")
-
-                    fig = px.line(
-                        bond_data,
-                        x=bond_data.index,
-                        y=yield_column,
-                        title=f"Yield data for {selected_bond}",
-                        labels={yield_column: "Yield (%)"}
-                    )
-
-                    fig.update_layout(
-                        xaxis_title="Index",
-                        yaxis_title="Yield (%)",
-                        plot_bgcolor="white",
-                        hovermode="x unified"
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
+                        st.warning("Could not identify a column for yield data")
                 else:
                     st.warning("No bond names found in the data.")
 
