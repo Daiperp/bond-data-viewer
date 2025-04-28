@@ -157,7 +157,7 @@ def main():
                         )
                         return
 
-                bond_names = df.iloc[:, bond_name_column].dropna().unique().tolist()
+                bond_names = df.iloc[:, 3].dropna().unique().tolist()
 
                 if bond_names:
                     selected_bond = st.selectbox(
