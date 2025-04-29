@@ -60,7 +60,7 @@ def download_csv(url, max_retries=3):
             if response.status_code == 200:
                 try:
                     content = response.content.decode('shift-jis')
-                    df = pd.read_csv(io.StringIO(content), header=None, sep="\t")
+                    df = pd.read_csv(io.StringIO(content), header=None, sep=",")
                     return df
                 except Exception as e:
                     st.error(f"Error parsing CSV data: {str(e)}")
@@ -128,7 +128,7 @@ def main():
             df = download_csv(url)
 
             if df is not None:
-                if df.shape[1] < 10:
+                if df.shape[1] < 29:
                     st.error("Downloaded CSV is malformed or unexpectedly short.")
                     return
                 
