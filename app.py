@@ -66,7 +66,7 @@ def download_csv(url, max_retries=3):
                     st.warning(f"Error parsing CSV data: {str(e)}")
                     retry_count += 1
                     if retry_count >= max_retries:
-                        st.error("Failed to parse CSV data after multiple attempts. The data format may be invalid.")
+                        st.error("Failed to parse CSV data after multiple attempts. The CSV format may be invalid or the data is corrupted.")
                         return None
             else:
                 st.error(
@@ -93,17 +93,23 @@ def calculate_years_to_maturity(due_date_str, selected_date):
     
     Args:
         due_date_str (str): Due date in YYYYMMDD format
-        selected_date (datetime): Selected date
+        selected_date (datetime or date): Selected date
     
     Returns:
         float: Years to maturity
     """
     try:
         due_date = datetime.strptime(str(due_date_str), "%Y%m%d")
+        
+        if isinstance(selected_date, datetime.date) and not isinstance(selected_date, datetime):
+            selected_date = datetime.combine(selected_date, datetime.min.time())
+            
+        # Calculate difference in days and convert to years
         days_to_maturity = (due_date - selected_date).days
         years_to_maturity = days_to_maturity / 365.25  # Account for leap years
         return round(years_to_maturity, 2)
-    except Exception:
+    except Exception as e:
+        st.warning(f"Error calculating years to maturity: {str(e)}")
         return None
 
 
@@ -125,8 +131,8 @@ def main():
             df = download_csv(url)
 
             if df is not None:
-                if df.shape[1] < 4:
-                    st.error("Data format invalid or download failed")
+                if df.shape[1] < 5:
+                    st.error("Downloaded CSV does not have enough columns. Data may be corrupted.")
                     return
                 
                 column_names = [
@@ -181,27 +187,33 @@ def main():
 
                     yield_column = "Average Compound Yield"
                     
-                    if yield_column in bond_data.columns:
-                        st.subheader(f"Yield data for {selected_bond}")
+                    if yield_column in bond_data.columns and "Years to Maturity" in bond_data.columns:
+                        bond_data = bond_data[bond_data["Years to Maturity"].notna()]
+                        
+                        if not bond_data.empty:
+                            st.subheader(f"Yield data for {selected_bond}")
 
-                        fig = px.line(
-                            bond_data,
-                            x=bond_data.index,
-                            y=yield_column,
-                            title=f"Yield data for {selected_bond}",
-                            labels={yield_column: "Yield (%)"}
-                        )
+                            fig = px.line(
+                                bond_data,
+                                x="Years to Maturity",
+                                y=yield_column,
+                                title=f"Yield data for {selected_bond}",
+                                labels={"Years to Maturity": "Years to Maturity", yield_column: "Yield (%)"}
+                            )
 
-                        fig.update_layout(
-                            xaxis_title="Index",
-                            yaxis_title="Yield (%)",
-                            plot_bgcolor="white",
-                            hovermode="x unified"
-                        )
+                            fig.update_layout(
+                                xaxis_title="Years to Maturity",
+                                yaxis_title="Yield (%)",
+                                plot_bgcolor="white",
+                                hovermode="x unified"
+                            )
 
-                        st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning(f"No valid Years to Maturity data for {selected_bond}")
                     else:
-                        st.warning("Could not identify a column for yield data")
+                        missing_column = "Years to Maturity" if yield_column in bond_data.columns else yield_column
+                        st.warning(f"Could not find required column: {missing_column}")
                 else:
                     st.warning("No bond names found in the data.")
 
