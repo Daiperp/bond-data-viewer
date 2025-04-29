@@ -15,7 +15,7 @@ st.set_page_config(
 st.title("Corporate Bond Data Viewer")
 st.markdown("Visualize corporate bond data from the JSDA website.")
 
-# URLを作成
+# URL作成
 def construct_url(selected_date):
     year_full = selected_date.year
     year_short = str(year_full)[-2:]
@@ -33,7 +33,7 @@ def download_csv(url):
         if response.status_code == 200:
             try:
                 content = response.content.decode('shift-jis')
-                df = pd.read_csv(io.StringIO(content), header=None, sep="\t")
+                df = pd.read_csv(io.StringIO(content), header=None, sep=None, engine="python")  # ←ここ直した！
                 return df
             except Exception as e:
                 st.error(f"Error parsing CSV data: {str(e)}")
@@ -46,7 +46,7 @@ def download_csv(url):
         return None
 
 def main():
-    # SessionState初期化
+    # セッション初期化
     if 'bond_data' not in st.session_state:
         st.session_state.bond_data = None
 
@@ -68,14 +68,14 @@ def main():
     if st.session_state.bond_data is not None:
         df = st.session_state.bond_data
 
-        # 🔥ここで防御！！
+        # 防御：列数チェック
         if df.shape[1] <= 3:
             st.error("Downloaded CSV does not have enough columns. Data may be corrupted.")
             return
 
-        bond_name_column = 3  # 4列目が銘柄名（国庫短期証券など）
+        bond_name_column = 3  # 4列目が銘柄名
         due_date_column = 4   # 5列目が償還期日
-        y_column_index = 6    # 7列目が利回りっぽい値
+        y_column_index = 6    # 7列目が利回りっぽい数字
 
         bond_names = df.iloc[:, bond_name_column].dropna().unique().tolist()
         bond_names = [name for name in bond_names if not str(name).isnumeric()]
