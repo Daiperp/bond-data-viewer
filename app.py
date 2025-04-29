@@ -68,9 +68,14 @@ def main():
     if st.session_state.bond_data is not None:
         df = st.session_state.bond_data
 
+        # 🔥ここで防御！！
+        if df.shape[1] <= 3:
+            st.error("Downloaded CSV does not have enough columns. Data may be corrupted.")
+            return
+
         bond_name_column = 3  # 4列目が銘柄名（国庫短期証券など）
         due_date_column = 4   # 5列目が償還期日
-        y_column_index = 6    # 7列目が利回り的な値
+        y_column_index = 6    # 7列目が利回りっぽい値
 
         bond_names = df.iloc[:, bond_name_column].dropna().unique().tolist()
         bond_names = [name for name in bond_names if not str(name).isnumeric()]
