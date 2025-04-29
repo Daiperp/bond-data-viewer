@@ -63,11 +63,8 @@ def download_csv(url, max_retries=3):
                     df = pd.read_csv(io.StringIO(content), header=None, sep="\t")
                     return df
                 except Exception as e:
-                    st.warning(f"Error parsing CSV data: {str(e)}")
-                    retry_count += 1
-                    if retry_count >= max_retries:
-                        st.error("Failed to parse CSV data after multiple attempts. The CSV format may be invalid or the data is corrupted.")
-                        return None
+                    st.error(f"Error parsing CSV data: {str(e)}")
+                    return None
             else:
                 st.error(
                     f"No data available for the selected date. "
@@ -131,8 +128,8 @@ def main():
             df = download_csv(url)
 
             if df is not None:
-                if df.shape[1] < 5:
-                    st.error("Downloaded CSV does not have enough columns. Data may be corrupted.")
+                if df.shape[1] < 10:
+                    st.error("Downloaded CSV is malformed or unexpectedly short.")
                     return
                 
                 column_names = [
