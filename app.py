@@ -7,8 +7,8 @@ from datetime import datetime
 import time
 import numpy as np
 
-st.set_page_config(page_title="JSDA Bond Viewer", layout="wide")
-st.title("JSDA Corporate Bond Yield Curve Viewer")
+st.set_page_config(page_title="JSDA Yield Curve Viewer", layout="wide")
+st.title("発行体別 社債利回りカーブビューア")
 
 # --- Utility functions ---
 def construct_url(selected_date):
@@ -29,12 +29,12 @@ def download_csv(url, max_retries=3):
                 df = pd.read_csv(io.StringIO(content), header=None)
                 return df
             else:
-                st.error(f"Data not found for selected date. Status code: {response.status_code}")
+                st.error(f"データが見つかりません。ステータスコード: {response.status_code}")
                 return None
         except Exception as e:
-            st.warning(f"Attempt {attempt+1} failed: {e}")
+            st.warning(f"{attempt+1}回目失敗: {e}")
             time.sleep(1)
-    st.error("Failed to download after multiple attempts.")
+    st.error("ダウンロード失敗")
     return None
 
 def calculate_maturity_years(issue_date_str, due_date_str):
@@ -46,48 +46,57 @@ def calculate_maturity_years(issue_date_str, due_date_str):
     except Exception:
         return np.nan
 
-# --- Session state initialization ---
+# --- セッション状態管理 ---
 if "df" not in st.session_state:
     st.session_state.df = None
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = datetime.now().date()
 
-# --- UI Elements ---
-selected_date = st.date_input("Select a date", value=st.session_state.selected_date)
+# --- ユーザー入力 ---
+selected_date = st.date_input("日付を選択", value=st.session_state.selected_date)
 st.session_state.selected_date = selected_date
 
-if st.button("Fetch and Visualize Data"):
+if st.button("データ取得"):
     file_name, url = construct_url(selected_date)
     df = download_csv(url)
-    if df is not None and df.shape[1] >= 16:
+    if df is not None and df.shape[1] >= 15:
         df.columns = [f"col_{i}" for i in range(df.shape[1])]
         st.session_state.df = df
     else:
-        st.error("Invalid or corrupted CSV file.")
+        st.error("CSV形式エラーまたは列不足")
         st.session_state.df = None
 
-# --- Plotting ---
+# --- 可視化処理 ---
 if st.session_state.df is not None:
-    df = st.session_state.df
+    df = st.session_state.df.copy()
 
-    bond_options = df["col_3"].dropna().unique().tolist()
-    bond_selected = st.selectbox("Select Bond (Issuer + Series)", bond_options)
+    # 発行体コード（下4桁）と発行体名（銘柄名から回号を除去）を取得
+    df["issuer_code"] = df["col_2"].astype(str).str[-4:]
+    df["issuer_name"] = df["col_3"].str.extract(r"([^\d]+)")  # 数字以外の部分＝発行体名
 
-    df_selected = df[df["col_3"] == bond_selected].copy()
+    issuer_names = df["issuer_name"].dropna().unique().tolist()
+    issuer_selected = st.selectbox("発行体を選択", issuer_names)
 
-    df_selected["Years to Maturity"] = df_selected.apply(
+    df_issuer = df[df["issuer_name"] == issuer_selected].copy()
+    df_issuer["Years to Maturity"] = df_issuer.apply(
         lambda row: calculate_maturity_years(row["col_0"], row["col_4"]), axis=1
     )
 
-    try:
+    # 利回りを数値化し、異常値除去（例：0～10%）
+    df_issuer["col_14"] = pd.to_numeric(df_issuer["col_14"], errors="coerce")
+    df_issuer = df_issuer[(df_issuer["col_14"] > 0) & (df_issuer["col_14"] < 10)]
+
+    # グラフ描画
+    if not df_issuer.empty:
         fig = px.scatter(
-            df_selected,
+            df_issuer,
             x="Years to Maturity",
             y="col_14",
-            title=f"Yield Curve for {bond_selected}",
-            labels={"col_14": "Yield (%)", "Years to Maturity": "Years to Maturity"},
+            hover_data=["col_3"],  # 銘柄名をホバー表示
+            title=f"{issuer_selected} の利回りカーブ",
+            labels={"col_14": "利回り（%）", "Years to Maturity": "残存年限（年）"}
         )
         fig.update_layout(plot_bgcolor="white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Graph rendering failed: {e}")
+    else:
+        st.warning("該当発行体の利回りデータが存在しません。")
