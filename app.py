@@ -12,7 +12,6 @@ st.title("JSDA Corporate Bond Yield Curve Viewer")
 
 # --- Utility functions ---
 def construct_url(selected_date):
-    """Construct file name and download URL from a given date"""
     year_full = selected_date.year
     year_short = str(year_full)[-2:]
     month = selected_date.strftime("%m")
@@ -22,7 +21,6 @@ def construct_url(selected_date):
     return file_name, url
 
 def download_csv(url, max_retries=3):
-    """Download CSV from JSDA with retry logic"""
     for attempt in range(max_retries):
         try:
             response = requests.get(url, timeout=30)
@@ -40,7 +38,6 @@ def download_csv(url, max_retries=3):
     return None
 
 def calculate_maturity_years(issue_date_str, due_date_str):
-    """Calculate remaining maturity in years"""
     try:
         issue_date = datetime.strptime(str(int(issue_date_str)), "%Y%m%d").date()
         due_date = datetime.strptime(str(int(due_date_str)), "%Y%m%d").date()
@@ -49,49 +46,48 @@ def calculate_maturity_years(issue_date_str, due_date_str):
     except Exception:
         return np.nan
 
-# --- Main App Logic ---
-def main():
-    today = datetime.now().date()
-    selected_date = st.date_input("Select a date", value=today)
+# --- Session state initialization ---
+if "df" not in st.session_state:
+    st.session_state.df = None
+if "selected_date" not in st.session_state:
+    st.session_state.selected_date = datetime.now().date()
 
-    if st.button("Fetch and Visualize Data"):
-        file_name, url = construct_url(selected_date)
-        df = download_csv(url)
+# --- UI Elements ---
+selected_date = st.date_input("Select a date", value=st.session_state.selected_date)
+st.session_state.selected_date = selected_date
 
-        if df is None or df.shape[1] < 16:
-            st.error("Invalid or corrupted CSV file.")
-            return
-
+if st.button("Fetch and Visualize Data"):
+    file_name, url = construct_url(selected_date)
+    df = download_csv(url)
+    if df is not None and df.shape[1] >= 16:
         df.columns = [f"col_{i}" for i in range(df.shape[1])]
+        st.session_state.df = df
+    else:
+        st.error("Invalid or corrupted CSV file.")
+        st.session_state.df = None
 
-        # 発行体+回号一覧（col_3）
-        bond_options = df["col_3"].dropna().unique().tolist()
-        bond_selected = st.selectbox("Select Bond (Issuer + Series)", bond_options)
+# --- Plotting ---
+if st.session_state.df is not None:
+    df = st.session_state.df
 
-        df_selected = df[df["col_3"] == bond_selected].copy()
+    bond_options = df["col_3"].dropna().unique().tolist()
+    bond_selected = st.selectbox("Select Bond (Issuer + Series)", bond_options)
 
-        if df_selected.empty:
-            st.warning("No data found for selected bond.")
-            return
+    df_selected = df[df["col_3"] == bond_selected].copy()
 
-        # 残存年限を計算
-        df_selected["Years to Maturity"] = df_selected.apply(
-            lambda row: calculate_maturity_years(row["col_0"], row["col_4"]), axis=1
+    df_selected["Years to Maturity"] = df_selected.apply(
+        lambda row: calculate_maturity_years(row["col_0"], row["col_4"]), axis=1
+    )
+
+    try:
+        fig = px.scatter(
+            df_selected,
+            x="Years to Maturity",
+            y="col_15",
+            title=f"Yield Curve for {bond_selected}",
+            labels={"col_15": "Yield (%)", "Years to Maturity": "Years to Maturity"},
         )
-
-        # 利回りと残存年限でグラフ化（利回り = col_15）
-        try:
-            fig = px.scatter(
-                df_selected,
-                x="Years to Maturity",
-                y="col_15",
-                title=f"Yield Curve for {bond_selected}",
-                labels={"col_15": "Yield (%)", "Years to Maturity": "Years to Maturity"},
-            )
-            fig.update_layout(plot_bgcolor="white", hovermode="x unified")
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"Graph rendering failed: {e}")
-
-if __name__ == "__main__":
-    main()
+        fig.update_layout(plot_bgcolor="white", hovermode="x unified")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Graph rendering failed: {e}")
