@@ -83,9 +83,9 @@ if st.session_state.df is not None:
         fig = px.scatter(
             df_selected,
             x="Years to Maturity",
-            y="col_15",
+            y="col_14",
             title=f"Yield Curve for {bond_selected}",
-            labels={"col_15": "Yield (%)", "Years to Maturity": "Years to Maturity"},
+            labels={"col_14": "Yield (%)", "Years to Maturity": "Years to Maturity"},
         )
         fig.update_layout(plot_bgcolor="white", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
