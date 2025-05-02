@@ -9,7 +9,7 @@ import numpy as np
 
 # --- ページ設定 ---
 st.set_page_config(page_title="JSDA Bond Spread Viewer", layout="wide")
-st.title("発行体別 社債利回り（複利）/ スプレッド（複利）ビューア")
+st.title("発行体別 社債利回り（複利）/ スプレッド（bp）ビューア")
 
 # --- 関数群 ---
 def construct_url(selected_date):
@@ -40,10 +40,9 @@ def build_gov_curve(df):
     gov_df["Years to Maturity"] = gov_df.apply(
         lambda row: calculate_maturity_years(row["col_0"], row["col_4"]), axis=1
     )
-    gov_df = gov_df.dropna(subset=["Years to Maturity", "col_5"])
-    gov_df["col_5"] = pd.to_numeric(gov_df["col_5"], errors="coerce")
-    gov_df = gov_df.dropna(subset=["col_5"])
-    curve = gov_df.groupby("Years to Maturity")["col_5"].mean().to_dict()
+    gov_df["col_6"] = pd.to_numeric(gov_df["col_6"], errors="coerce")
+    gov_df = gov_df.dropna(subset=["Years to Maturity", "col_6"])
+    curve = gov_df.groupby("Years to Maturity")["col_6"].mean().to_dict()
     return curve
 
 def interpolate_from_curve(years, curve):
@@ -72,12 +71,12 @@ if "selected_date" not in st.session_state:
 date_input = st.date_input("日付を選択", value=st.session_state.selected_date)
 st.session_state.selected_date = date_input
 
-view_mode = st.radio("表示モードを選択", ["利回り（複利）", "スプレッド（複利）"], horizontal=True)
+view_mode = st.radio("表示モードを選択", ["利回り（複利）", "スプレッド"], horizontal=True)
 
 if st.button("データ取得"):
     fname, url = construct_url(date_input)
     df = download_csv(url)
-    if df is not None and df.shape[1] >= 6:
+    if df is not None and df.shape[1] >= 7:
         df.columns = [f"col_{i}" for i in range(df.shape[1])]
         st.session_state.df = df
     else:
@@ -96,20 +95,20 @@ if st.session_state.df is not None:
     df_issuer["Years to Maturity"] = df_issuer.apply(
         lambda row: calculate_maturity_years(row["col_0"], row["col_4"]), axis=1
     )
-    df_issuer["col_5"] = pd.to_numeric(df_issuer["col_5"], errors="coerce")
-    df_issuer = df_issuer.dropna(subset=["Years to Maturity", "col_5"])
+    df_issuer["col_6"] = pd.to_numeric(df_issuer["col_6"], errors="coerce")
+    df_issuer = df_issuer.dropna(subset=["Years to Maturity", "col_6"])
 
     gov_curve = build_gov_curve(df)
 
-    if view_mode == "スプレッド（複利）":
+    if view_mode == "スプレッド":
         df_issuer["gov_yield"] = df_issuer["Years to Maturity"].apply(
             lambda y: interpolate_from_curve(y, gov_curve)
         )
-        df_issuer["Spread"] = df_issuer["col_5"] - df_issuer["gov_yield"]
-        y_col = "Spread"
-        y_label = "スプレッド（複利, %）"
+        df_issuer["spread_bp"] = ((df_issuer["col_6"] - df_issuer["gov_yield"]) * 100).round(1)
+        y_col = "spread_bp"
+        y_label = "スプレッド（bp）"
     else:
-        y_col = "col_5"
+        y_col = "col_6"
         y_label = "利回り（複利, %）"
 
     if not df_issuer.empty:
