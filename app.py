@@ -99,7 +99,7 @@ if st.button("データ取得"):
         df.columns = [f"col_{i}" for i in range(df.shape[1])]
         st.session_state.df = df
     else:
-        st.error("CSVが壊れているか、列数が不足しています")
+        st.error("指定された日のデータがありません。別の日を指定してください")
         st.session_state.df = None
 
 if st.session_state.df is not None:
